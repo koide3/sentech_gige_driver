@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   cv_bridge
   image_transport
+  camera_info_manager
 )
 
 find_package(StApi REQUIRED)
