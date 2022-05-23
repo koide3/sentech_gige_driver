@@ -46,6 +46,9 @@ public:
   }
 
   ~SentechGigeDriver() {
+  }
+
+  void stop() {
     ist_device->AcquisitionStop();
     ist_data_stream->StopAcquisition();
   }
@@ -192,6 +195,7 @@ int main(int argc, char** argv) {
 
   SentechGigeDriver driver;
   driver.spin();
+  driver.stop();
 
   return 0;
 }
