@@ -24,7 +24,8 @@ public:
     const std::string camera_name = device_name.c_str();
     ROS_INFO_STREAM("device:" << camera_name);
 
-    ist_data_stream = ist_device->CreateIStDataStream(0);
+    const int camera_id = nh.param<int>("camera_id", 0);
+    ist_data_stream = ist_device->CreateIStDataStream(camera_id);
     ist_data_stream->StartAcquisition();
     ist_device->AcquisitionStart();
 
@@ -107,7 +108,7 @@ public:
             }
 
             if (convert_code != 0) {
-              encoding = "bgr8";
+              encoding = "rgb8";
               cv::cvtColor(input_mat, bgr_image, convert_code);
               input_mat = bgr_image;
             }
@@ -163,9 +164,20 @@ private:
   }
 
   void set_gain(bool auto_gain, double gain) {
+    return;
     ROS_INFO_STREAM("Setting gain");
 
     auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainAuto");
+    if (!GenApi::IsAvailable(node)) {
+      ROS_WARN_STREAM("GainAuto is not available!!");
+      return;
+    }
+
+    if (!GenApi::IsWritable(node)) {
+      ROS_WARN_STREAM("GainAuto is not writable!!");
+      return;
+    }
+
     GenApi::CEnumerationPtr value(node);
 
     if(auto_gain) {
