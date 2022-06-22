@@ -1,0 +1,13 @@
+<launch>
+	<node pkg="sentech_gige_driver" type="sentech_gige_driver" name="sentech_gige_driver" output="screen">
+		<param name="frame_id" value="camera"/>
+		<param name="enable_ptp" value="true"/>
+		<param name="auto_gain" value="true"/>
+		<param name="gain" value="22.0"/>
+		<param name="auto_exposure" value="true"/>
+		<param name="exposure" value="15000"/>
+		<param name="fps" value="0.0"/>
+	</node>
+</launch>
+
+

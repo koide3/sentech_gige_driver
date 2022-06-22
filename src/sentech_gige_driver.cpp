@@ -140,7 +140,7 @@ public:
 
 private:
   void set_fps(double fps) {
-    ROS_INFO_STREAM("Setting FPS:" << fps);
+    ROS_INFO_STREAM("Setting FPS");
 
     auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("AcquisitionFrameRate");
     if (!GenApi::IsWritable(node)) {
@@ -156,50 +156,41 @@ private:
     if (fps <= 0.0) {
       fps = max_fps;
     }
-
     fps = std::max(min_fps, std::min(max_fps, fps));
-    value->SetValue(fps);
 
-    ROS_INFO_STREAM("FPS set");
+    ROS_INFO_STREAM("Set FPS:" << fps);
+    value->SetValue(fps);
   }
 
   void set_gain(bool auto_gain, double gain) {
-    return;
     ROS_INFO_STREAM("Setting gain");
 
     auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainAuto");
-    if (!GenApi::IsAvailable(node)) {
-      ROS_WARN_STREAM("GainAuto is not available!!");
-      return;
-    }
-
-    if (!GenApi::IsWritable(node)) {
-      ROS_WARN_STREAM("GainAuto is not writable!!");
-      return;
-    }
-
-    GenApi::CEnumerationPtr value(node);
-
-    if(auto_gain) {
-      ROS_INFO_STREAM("Auto gain");
-      GenApi::CEnumEntryPtr continous = value->GetEntryByName("Continuous");
-      value->SetIntValue(continous->GetValue());
+    if (!GenApi::IsAvailable(node) || !GenApi::IsWritable(node)) {
+      ROS_WARN_STREAM("GainAuto is not available or writable!!");
     } else {
-      ROS_INFO_STREAM("Manual gain:" << gain);
-      GenApi::CEnumEntryPtr off = value->GetEntryByName("Off");
-      value->SetIntValue(off->GetValue());
+      GenApi::CEnumerationPtr value(node);
 
-      if(gain > 0.0) {
-        auto gain_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("Gain");
-        GenApi::CFloatPtr gain_value(gain_node);
-        const double gain_min = gain_value->GetMin();
-        const double gain_max = gain_value->GetMax();
-
-        ROS_INFO_STREAM("Gain range:" << gain_min << " ~ " << gain_max);
-
-        gain = std::max(gain_min, std::min(gain_max, gain));
-        gain_value->SetValue(gain);
+      if(auto_gain) {
+        ROS_INFO_STREAM("Auto gain");
+        value->SetIntValue(value->GetEntryByName("Continuous")->GetValue());
+      } else {
+        ROS_INFO_STREAM("Manual gain");
+        value->SetIntValue(value->GetEntryByName("Off")->GetValue());
       }
+    }
+
+    if (!auto_gain && gain > 0.0) {
+      auto gain_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("Gain");
+      GenApi::CFloatPtr gain_value(gain_node);
+      const double gain_min = gain_value->GetMin();
+      const double gain_max = gain_value->GetMax();
+
+      ROS_INFO_STREAM("Gain range:" << gain_min << " ~ " << gain_max);
+      gain = std::max(gain_min, std::min(gain_max, gain));
+
+      ROS_INFO_STREAM("Set Gain:" << gain);
+      gain_value->SetValue(gain);
     }
   }
 
@@ -207,6 +198,10 @@ private:
     ROS_INFO_STREAM("Setting exposure");
 
     auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureAuto");
+    if (!GenApi::IsAvailable(node)) {
+      ROS_WARN_STREAM("ExposureAuto node is not available");
+    }
+
     GenApi::CEnumerationPtr value(node);
 
     if (auto_exposure) {
@@ -225,8 +220,9 @@ private:
         const double exposure_max = exposure_value->GetMax();
 
         ROS_INFO_STREAM("Exposure range:" << exposure_min << " ~ " << exposure_max);
-
         exposure = std::max(exposure_min, std::min(exposure_max, exposure));
+
+        ROS_INFO_STREAM("Set Exposure:" << exposure);
         exposure_value->SetValue(exposure);
       }
     }
@@ -248,6 +244,10 @@ private:
   }
 
   void publish_ptp_status(const ros::WallTimerEvent& e) {
+    if (!nh.param<bool>("enable_ptp", true)) {
+      return;
+    }
+
     auto latch_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("PtpDataSetLatch");
     if(!GenApi::IsAvailable(latch_node)) {
       ROS_WARN_STREAM("PTP latch node is not available");
