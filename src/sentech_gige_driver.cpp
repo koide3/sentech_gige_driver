@@ -41,7 +41,10 @@ public:
 
     const bool auto_exposure = nh.param<bool>("auto_exposure", true);
     const double exposure = nh.param<double>("exposure", 14878);
-    set_exposure(auto_exposure, exposure);
+    const double exposure_min = nh.param<double>("exposure_min", 10);
+    const double exposure_max = nh.param<double>("exposure_max", 50000);
+
+    set_exposure(auto_exposure, exposure, exposure_min, exposure_max);
 
     set_fps(nh.param<double>("fps", 0.0));
 
@@ -165,11 +168,24 @@ private:
   void set_gain(bool auto_gain, double gain) {
     ROS_INFO_STREAM("Setting gain");
 
-    auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainAuto");
-    if (!GenApi::IsAvailable(node) || !GenApi::IsWritable(node)) {
+    auto gain_auto_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainAuto");
+    if (!GenApi::IsAvailable(gain_auto_node) || !GenApi::IsWritable(gain_auto_node)) {
       ROS_WARN_STREAM("GainAuto is not available or writable!!");
-    } else {
-      GenApi::CEnumerationPtr value(node);
+      ROS_WARN_STREAM("Switching to digital gain!!");
+
+      auto gain_selector_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainSelector");
+      if (!GenApi::IsAvailable(gain_selector_node) || !GenApi::IsWritable(gain_selector_node)) {
+        ROS_WARN_STREAM("GainSelector is not available or writable!!");
+      } else {
+        GenApi::CEnumerationPtr item(gain_selector_node);
+        item->SetIntValue(item->GetEntryByName("DigitalAll")->GetValue());
+
+        gain_auto_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainAuto");
+      }
+    }
+
+    if (GenApi::IsAvailable(gain_auto_node) && GenApi::IsWritable(gain_auto_node)) {
+      GenApi::CEnumerationPtr value(gain_auto_node);
 
       if(auto_gain) {
         ROS_INFO_STREAM("Auto gain");
@@ -178,6 +194,8 @@ private:
         ROS_INFO_STREAM("Manual gain");
         value->SetIntValue(value->GetEntryByName("Off")->GetValue());
       }
+    } else {
+      ROS_WARN_STREAM("Failed to set GainAuto");
     }
 
     if (!auto_gain && gain > 0.0) {
@@ -194,7 +212,7 @@ private:
     }
   }
 
-  void set_exposure(bool auto_exposure, double exposure) {
+  void set_exposure(bool auto_exposure, double exposure, double exposure_min, double exposure_max) {
     ROS_INFO_STREAM("Setting exposure");
 
     auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureAuto");
@@ -208,6 +226,19 @@ private:
       ROS_INFO_STREAM("Auto exposure");
       GenApi::CEnumEntryPtr continous = value->GetEntryByName("Continuous");
       value->SetIntValue(continous->GetValue());
+
+      auto exposure_min_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureAutoLimitMin");
+      auto exposure_max_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureAutoLimitMax");
+
+      if (!GenApi::IsWritable(exposure_min_node) || !GenApi::IsWritable(exposure_max_node)) {
+        std::cerr << "Auto exposure limits are not writable!!" << std::endl;
+      } else {
+        GenApi::CFloatPtr(exposure_min_node)->SetValue(exposure_min);
+        GenApi::CFloatPtr(exposure_max_node)->SetValue(exposure_max);
+
+        ROS_INFO_STREAM("Auto exposure limit:" << exposure_min << " ~ " << exposure_max);
+      }
+
     } else {
       ROS_INFO_STREAM("Manual exposure");
       GenApi::CEnumEntryPtr off = value->GetEntryByName("Off");
