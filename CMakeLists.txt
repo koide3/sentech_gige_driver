@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(StApi REQUIRED)
+find_package(OpenCV REQUIRED)
 
 ###################################
 ## catkin specific configuration ##
@@ -41,5 +42,6 @@ add_executable(sentech_gige_driver
 )
 target_link_libraries(sentech_gige_driver
   ${StApi_LIBRARIES}
+  ${OpenCV_LIBRARIES}
   ${catkin_LIBRARIES}
 )
