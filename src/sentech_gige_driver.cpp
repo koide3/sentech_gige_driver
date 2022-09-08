@@ -6,6 +6,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <std_msgs/String.h>
+#include <std_msgs/Float64.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <camera_info_manager/camera_info_manager.h>
@@ -56,6 +57,9 @@ public:
     image_pub = it->advertise("image", 10);
     camera_info_pub = nh.advertise<sensor_msgs::CameraInfo>("camera_info", 10);
     ptp_status_pub = nh.advertise<std_msgs::String>("ptp_status", 1);
+
+    gain_sub = nh.subscribe<std_msgs::Float64>("set_gain", 1, &SentechGigeDriver::set_gain_callback, this);
+    exposure_sub = nh.subscribe<std_msgs::Float64>("set_exposure", 1, &SentechGigeDriver::set_exposure_callback, this);
 
     ptp_status_timer = nh.createWallTimer(ros::WallDuration(2.0), &SentechGigeDriver::publish_ptp_status, this);
   }
@@ -306,6 +310,10 @@ private:
     ptp_status_pub.publish(str);
   }
 
+  void set_exposure_callback(const std_msgs::Float64::ConstPtr& msg) { set_exposure(false, msg->data, 0.0, 1000000.0); }
+
+  void set_gain_callback(const std_msgs::Float64::ConstPtr& msg) { set_gain(false, msg->data); }
+
 private:
   CStApiAutoInit stapi_auto_init;
   CIStSystemPtr ist_system;
@@ -320,6 +328,9 @@ private:
   image_transport::Publisher image_pub;
   ros::Publisher camera_info_pub;
   ros::Publisher ptp_status_pub;
+
+  ros::Subscriber gain_sub;
+  ros::Subscriber exposure_sub;
 
   ros::WallTimer ptp_status_timer;
 
