@@ -21,6 +21,7 @@ public:
     this->declare_parameter<double>("exposure", params.exposure);
     this->declare_parameter<double>("exposure_min", params.exposure_min);
     this->declare_parameter<double>("exposure_max", params.exposure_max);
+    this->declare_parameter<double>("fps", params.fps);
 
     this->get_parameter("frame_id", frame_id);
     this->get_parameter("camera_id", params.camera_id);
@@ -31,6 +32,7 @@ public:
     this->get_parameter("exposure", params.exposure);
     this->get_parameter("exposure_min", params.exposure_min);
     this->get_parameter("exposure_max", params.exposure_max);
+    this->get_parameter("fps", params.fps);
 
     init(params);
 
@@ -39,7 +41,7 @@ public:
     image_pub = image_transport::create_camera_publisher(this, "image");
     ptp_status_pub = this->create_publisher<std_msgs::msg::String>("ptp_status", 10);
 
-    timer = this->create_wall_timer(std::chrono::milliseconds(5), [this] { timer_callback(); });
+    timer = this->create_wall_timer(std::chrono::milliseconds(100), [this] { timer_callback(); });
     if (params.enable_ptp) {
       ptp_status_timer = this->create_wall_timer(std::chrono::seconds(2), [this] { ptp_status_timer_callback(); });
     }

@@ -302,7 +302,7 @@ protected:
     std::stringstream sst;
     sst << "Status:" << status;
 
-    if (status == "Disabled") {
+    if (status == "Disabled" || status == "Listening") {
       std::cout << "Latching PTP" << std::endl;
       auto latch_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("PtpDataSetLatch");
       if (!GenApi::IsAvailable(latch_node)) {
