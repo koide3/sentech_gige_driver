@@ -6,6 +6,9 @@ ROS1/ROS2 driver for OMRON Sentech GigE Vision Model M Series.
 
 Download and install Sentech SDK: https://sentech.co.jp/en/products/GigE/CMOS-M.html
 
+Make sure that you added ```source /opt/sentech/.stprofile``` to ```.bashrc```.
+
+Download and build sentech_gige_driver:
 ```bash
 cd ros2_src/src
 git clone https://github.com/koide3/sentech_gige_driver
