@@ -82,6 +82,7 @@ public:
     using namespace GenApi;
 
     if (!ist_data_stream->IsGrabbing()) {
+      std::cout << "no grabbing" << std::endl;
       return std::make_pair(0, cv::Mat());
     }
 
@@ -137,6 +138,7 @@ public:
       return std::make_pair(stamp, bgr_image);
     }
 
+    std::cout << "no image" << std::endl;
     return std::make_pair(0, cv::Mat());
   }
 

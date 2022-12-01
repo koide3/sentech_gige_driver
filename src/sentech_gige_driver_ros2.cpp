@@ -41,7 +41,7 @@ public:
     image_pub = image_transport::create_camera_publisher(this, "image");
     ptp_status_pub = this->create_publisher<std_msgs::msg::String>("ptp_status", 10);
 
-    timer = this->create_wall_timer(std::chrono::milliseconds(100), [this] { timer_callback(); });
+    // timer = this->create_wall_timer(std::chrono::milliseconds(100), [this] { timer_callback(); });
     if (params.enable_ptp) {
       ptp_status_timer = this->create_wall_timer(std::chrono::seconds(2), [this] { ptp_status_timer_callback(); });
     }
@@ -51,7 +51,7 @@ public:
     stop();
   }
 
-  void timer_callback() {
+  void spin_once() {
     const auto stamp_image = get_image();
     const auto& stamp = stamp_image.first;
     const auto& image = stamp_image.second;
@@ -97,7 +97,11 @@ int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
   auto node = std::make_shared<SentechGigeDriverROS2>(options);
-  rclcpp::spin(node);
+
+  while (rclcpp::ok()) {
+    node->spin_once();
+    rclcpp::spin_some(node);
+  }
   rclcpp::shutdown();
 
   return 0;
