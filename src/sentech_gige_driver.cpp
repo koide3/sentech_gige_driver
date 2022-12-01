@@ -33,7 +33,7 @@ public:
     // ROS related
     nh = ros::NodeHandle("~");
 
-    if(nh.param<bool>("enable_ptp", true)) {
+    if (nh.param<bool>("enable_ptp", true)) {
       enable_ptp();
     }
     const bool auto_gain = nh.param<bool>("auto_gain", true);
@@ -64,8 +64,7 @@ public:
     ptp_status_timer = nh.createWallTimer(ros::WallDuration(2.0), &SentechGigeDriver::publish_ptp_status, this);
   }
 
-  ~SentechGigeDriver() {
-  }
+  ~SentechGigeDriver() {}
 
   void stop() {
     ist_device->AcquisitionStop();
@@ -145,7 +144,7 @@ public:
     }
   }
 
-private:
+protected:
   void set_fps(double fps) {
     ROS_INFO_STREAM("Setting FPS");
 
@@ -191,7 +190,7 @@ private:
     if (GenApi::IsAvailable(gain_auto_node) && GenApi::IsWritable(gain_auto_node)) {
       GenApi::CEnumerationPtr value(gain_auto_node);
 
-      if(auto_gain) {
+      if (auto_gain) {
         ROS_INFO_STREAM("Auto gain");
         value->SetIntValue(value->GetEntryByName("Continuous")->GetValue());
       } else {
@@ -284,7 +283,7 @@ private:
     }
 
     auto latch_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("PtpDataSetLatch");
-    if(!GenApi::IsAvailable(latch_node)) {
+    if (!GenApi::IsAvailable(latch_node)) {
       ROS_WARN_STREAM("PTP latch node is not available");
     }
 
