@@ -13,11 +13,11 @@ struct SentechGigeDriverParams {
     gain = 22.0;
 
     auto_exposure = true;
-    exposure = 14878.0;
+    exposure = 15000.0;
     exposure_min = 10.0;
     exposure_max = 50000.0;
 
-    fps = 0.0;
+    fps = 100.0;
   }
 
   int camera_id;
@@ -36,8 +36,13 @@ struct SentechGigeDriverParams {
 
 class SentechGigeDriver {
 public:
-  SentechGigeDriver() {}
-  virtual ~SentechGigeDriver() {}
+  SentechGigeDriver() : initialized(false), stopped(false) {}
+
+  virtual ~SentechGigeDriver() {
+    if (initialized && !stopped) {
+      stop();
+    }
+  }
 
   void init(const SentechGigeDriverParams& params) {
     using namespace StApi;
@@ -51,280 +56,275 @@ public:
 
     const auto device_name = ist_device->GetIStDeviceInfo()->GetDisplayName();
     camera_name = device_name.c_str();
-    std::cout << "device:" << camera_name;
+    std::cout << "Device:" << camera_name << std::endl;
 
-    ist_data_stream = ist_device->CreateIStDataStream(params.camera_id);
+    ist_data_stream = ist_device->CreateIStDataStream(0);
+    RegisterCallback(ist_data_stream, *this, &SentechGigeDriver::image_callback, (void*)nullptr);
+
     ist_data_stream->StartAcquisition();
     ist_device->AcquisitionStart();
+    initialized = true;
 
-    if (params.enable_ptp) {
-      enable_ptp();
+    std::cout << "---" << std::endl;
+
+    // Gain
+    if (params.auto_gain) {
+      if (!set_param<std::string>("GainAuto", "Continuous")) {
+        std::cerr << "warning: Use digial gain because analogue gain is not supported" << std::endl;
+        set_param<std::string>("GainSelector", "DigitalAll");
+        set_param<std::string>("GainAuto", "Continuous");
+      }
+    } else {
+      set_param<std::string>("GainAuto", "Off");
+      set_param<double>("Gain", params.gain);
     }
 
-    set_gain(params.auto_gain, params.gain);
-    set_exposure(params.auto_exposure, params.exposure, params.exposure_min, params.exposure_max);
+    // Exposure
+    if (params.auto_exposure) {
+      set_param<std::string>("ExposureAuto", "Continuous");
+      set_param<double>("ExposureAutoLimitMin", params.exposure_min);
+      set_param<double>("ExposureAutoLimitMax", params.exposure_max);
+    } else {
+      set_param<std::string>("ExposureAuto", "Off");
+      set_param<double>("ExposureTime", params.exposure);
+    }
 
-    set_fps(params.fps);
+    // FPS
+    set_param<double>("AcquisitionFrameRate", params.fps);
+
+    // PTP
+    set_param<bool>("PtpEnable", params.enable_ptp);
+    if (params.enable_ptp) {
+      execute_command("PtpDataSetLatch");
+    }
+
+    std::cout << "---" << std::endl;
   }
 
   void stop() {
     std::cout << "Stopping Acquisition" << std::endl;
-    try {
-      ist_device->AcquisitionStop();
-      ist_data_stream->StopAcquisition();
-    } catch (const GenICam::GenericException& e) {
-      std::cerr << "exception:" << e.GetDescription() << std::endl;
-    }
+    ist_device->AcquisitionStop();
+    ist_data_stream->StopAcquisition();
+    stopped = true;
   }
 
-  std::pair<std::uint64_t, cv::Mat> get_image() {
-    using namespace StApi;
-    using namespace GenApi;
-
-    if (!ist_data_stream->IsGrabbing()) {
-      std::cout << "no grabbing" << std::endl;
-      return std::make_pair(0, cv::Mat());
-    }
-
-    std::string encoding = "mono8";
-    cv::Mat input_mat;
-    cv::Mat bgr_image;
-
-    CIStStreamBufferPtr ist_stream_buffer(ist_data_stream->RetrieveBuffer(1000));
-    if (ist_stream_buffer->GetIStStreamBufferInfo()->IsImagePresent()) {
-      IStImage* ist_image = ist_stream_buffer->GetIStImage();
-      const auto pixel_format = ist_image->GetImagePixelFormat();
-      IStPixelFormatInfo* const pixel_format_info = GetIStPixelFormatInfo(pixel_format);
-      const auto stamp = ist_stream_buffer->GetIStStreamBufferInfo()->GetTimestamp();
-
-      if (pixel_format_info->IsMono() || pixel_format_info->IsBayer()) {
-        const size_t width = ist_image->GetImageWidth();
-        const size_t height = ist_image->GetImageHeight();
-        int input_type = CV_8UC1;
-        if (8 < pixel_format_info->GetEachComponentTotalBitCount()) {
-          input_type = CV_16UC1;
-        }
-
-        input_mat.create(height, width, input_type);
-
-        const size_t buffer_size = input_mat.rows * input_mat.cols * input_mat.elemSize() * input_mat.channels();
-        memcpy(input_mat.ptr(0), ist_image->GetImageBuffer(), buffer_size);
-
-        if (pixel_format_info->IsBayer()) {
-          int convert_code = 0;
-          switch (pixel_format_info->GetPixelColorFilter()) {
-            case (StPixelColorFilter_BayerRG):
-              convert_code = cv::COLOR_BayerRG2BGR;
-              break;
-            case (StPixelColorFilter_BayerGR):
-              convert_code = cv::COLOR_BayerGR2BGR;
-              break;
-            case (StPixelColorFilter_BayerGB):
-              convert_code = cv::COLOR_BayerGB2BGR;
-              break;
-            case (StPixelColorFilter_BayerBG):
-              convert_code = cv::COLOR_BayerBG2BGR;
-              break;
-          }
-
-          if (convert_code != 0) {
-            encoding = "rgb8";
-            cv::cvtColor(input_mat, bgr_image, convert_code);
-            input_mat = bgr_image;
-          }
-        }
-      }
-
-      return std::make_pair(stamp, bgr_image);
-    }
-
-    std::cout << "no image" << std::endl;
-    return std::make_pair(0, cv::Mat());
-  }
+  virtual void publish_image(std::uint64_t stamp, const cv::Mat& bgr_image) = 0;
+  virtual void publish_ptp_status(const std::string& status) = 0;
 
 protected:
-  void set_fps(double fps) {
-    std::cout << "Setting FPS" << std::endl;
+  GenApi::INode* get_read_node(const std::string& node_name) {
+    auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode(node_name.c_str());
 
-    auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("AcquisitionFrameRate");
-    if (!GenApi::IsWritable(node)) {
-      std::cout << "AcquisitionFrameRate is not writable!!" << std::endl;
-      return;
-    }
-
-    GenApi::CFloatPtr value(node);
-    const double min_fps = value->GetMin();
-    const double max_fps = value->GetMax();
-    std::cout << "FPS range:" << min_fps << " ~ " << max_fps << std::endl;
-
-    if (fps <= 0.0) {
-      fps = max_fps;
-    }
-    fps = std::max(min_fps, std::min(max_fps, fps));
-
-    std::cout << "Set FPS:" << fps << std::endl;
-    value->SetValue(fps);
-  }
-
-  void set_gain(bool auto_gain, double gain) {
-    std::cout << "Setting gain" << std::endl;
-
-    auto gain_auto_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainAuto");
-    if (!GenApi::IsAvailable(gain_auto_node) || !GenApi::IsWritable(gain_auto_node)) {
-      std::cout << "GainAuto is not available or writable!!" << std::endl;
-      std::cout << "Switching to digital gain!!" << std::endl;
-
-      auto gain_selector_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainSelector");
-      if (!GenApi::IsAvailable(gain_selector_node) || !GenApi::IsWritable(gain_selector_node)) {
-        std::cout << "GainSelector is not available or writable!!" << std::endl;
-      } else {
-        GenApi::CEnumerationPtr item(gain_selector_node);
-        item->SetIntValue(item->GetEntryByName("DigitalAll")->GetValue());
-
-        gain_auto_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("GainAuto");
-      }
-    }
-
-    if (GenApi::IsAvailable(gain_auto_node) && GenApi::IsWritable(gain_auto_node)) {
-      GenApi::CEnumerationPtr value(gain_auto_node);
-
-      if (auto_gain) {
-        std::cout << "Auto gain" << std::endl;
-        value->SetIntValue(value->GetEntryByName("Continuous")->GetValue());
-      } else {
-        std::cout << "Manual gain" << std::endl;
-        value->SetIntValue(value->GetEntryByName("Off")->GetValue());
-      }
-    } else {
-      std::cout << "Failed to set GainAuto" << std::endl;
-    }
-
-    if (!auto_gain && gain > 0.0) {
-      auto gain_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("Gain");
-      GenApi::CFloatPtr gain_value(gain_node);
-      const double gain_min = gain_value->GetMin();
-      const double gain_max = gain_value->GetMax();
-
-      std::cout << "Gain range:" << gain_min << " ~ " << gain_max << std::endl;
-      gain = std::max(gain_min, std::min(gain_max, gain));
-
-      std::cout << "Set Gain:" << gain << std::endl;
-      gain_value->SetValue(gain);
-    }
-  }
-
-  void set_exposure(bool auto_exposure, double exposure, double exposure_min, double exposure_max) {
-    std::cout << "Setting exposure" << std::endl;
-
-    auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureAuto");
     if (!GenApi::IsAvailable(node)) {
-      std::cout << "ExposureAuto node is not available" << std::endl;
+      std::cerr << "warning: " << node_name << " is not available!!" << std::endl;
+      return nullptr;
     }
 
-    GenApi::CEnumerationPtr value(node);
-
-    if (auto_exposure) {
-      std::cout << "Auto exposure" << std::endl;
-      GenApi::CEnumEntryPtr continous = value->GetEntryByName("Continuous");
-      value->SetIntValue(continous->GetValue());
-
-      auto exposure_min_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureAutoLimitMin");
-      auto exposure_max_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureAutoLimitMax");
-
-      if (!GenApi::IsWritable(exposure_min_node) || !GenApi::IsWritable(exposure_max_node)) {
-        std::cerr << "Auto exposure limits are not writable!!" << std::endl;
-      } else {
-        GenApi::CFloatPtr(exposure_min_node)->SetValue(exposure_min);
-        GenApi::CFloatPtr(exposure_max_node)->SetValue(exposure_max);
-
-        std::cout << "Auto exposure limit:" << exposure_min << " ~ " << exposure_max << std::endl;
-      }
-
-    } else {
-      std::cout << "Manual exposure" << std::endl;
-      GenApi::CEnumEntryPtr off = value->GetEntryByName("Off");
-      value->SetIntValue(off->GetValue());
-
-      if (exposure > 0.0) {
-        auto exposure_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("ExposureTime");
-        GenApi::CFloatPtr exposure_value(exposure_node);
-        const double exposure_min = exposure_value->GetMin();
-        const double exposure_max = exposure_value->GetMax();
-
-        std::cout << "Exposure range:" << exposure_min << " ~ " << exposure_max << std::endl;
-        exposure = std::max(exposure_min, std::min(exposure_max, exposure));
-
-        std::cout << "Set Exposure:" << exposure << std::endl;
-        exposure_value->SetValue(exposure);
-      }
+    if (!GenApi::IsReadable(node)) {
+      std::cerr << "warning: " << node_name << " is not readable!!" << std::endl;
+      return nullptr;
     }
+
+    return node;
   }
 
-  void enable_ptp() {
-    std::cout << "Enabling PTP" << std::endl;
+  GenApi::INode* get_write_node(const std::string& node_name) {
+    auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode(node_name.c_str());
 
-    auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("PtpEnable");
+    if (!GenApi::IsAvailable(node)) {
+      std::cerr << "warning: " << node_name << " is not available!!" << std::endl;
+      return nullptr;
+    }
+
     if (!GenApi::IsWritable(node)) {
-      std::cout << "PTP node is not writable!!" << std::endl;
+      std::cerr << "warning: " << node_name << " is not writable!!" << std::endl;
+      return nullptr;
+    }
+
+    return node;
+  }
+
+  bool set_param(GenApi::INode* node, bool value) {
+    GenApi::CBooleanPtr value_ptr(node);
+    value_ptr->SetValue(value);
+    std::cout << " to " << value << std::endl;
+    return true;
+  }
+
+  bool set_param(GenApi::INode* node, double value) {
+    GenApi::CFloatPtr value_ptr(node);
+    double min = value_ptr->GetMin();
+    double max = value_ptr->GetMax();
+    value = std::min(max, std::max(min, value));
+    value_ptr->SetValue(value);
+    std::cout << " to " << value << " (" << min << " ~ " << max << ")" << std::endl;
+    return true;
+  }
+
+  bool set_param(GenApi::INode* node, int value) {
+    GenApi::CIntegerPtr value_ptr(node);
+    int min = value_ptr->GetMin();
+    int max = value_ptr->GetMax();
+    value = std::min(max, std::max(min, value));
+    value_ptr->SetValue(value);
+    std::cout << " to " << value << " (" << min << " ~ " << max << ")" << std::endl;
+    return true;
+  }
+
+  bool set_param(GenApi::INode* node, const std::string& value) {
+    GenApi::CEnumerationPtr value_ptr(node);
+    GenApi::IEnumEntry* entry = value_ptr->GetEntryByName(value.c_str());
+
+    if (!entry) {
+      std::cerr << "warning: invalid entry " << value << std::endl;
+      return false;
+    }
+
+    value_ptr->SetIntValue(entry->GetValue());
+    std::cout << " to " << value << std::endl;
+
+    return true;
+  }
+
+  template <typename T>
+  bool set_param(const std::string& node_name, const T& value) {
+    auto node = get_write_node(node_name);
+    if (!node) {
+      return false;
+    }
+
+    std::cout << "Set " << node_name;
+    return set_param(node, value);
+  }
+
+  bool get_bool(const std::string& node_name) {
+    auto node = get_read_node(node_name);
+    if (!node) {
+      return false;
+    }
+
+    GenApi::CBooleanPtr value_ptr(node);
+    return value_ptr->GetValue();
+  }
+
+  int get_int(const std::string& node_name) {
+    auto node = get_read_node(node_name);
+    if (!node) {
+      return 0;
+    }
+
+    GenApi::CIntegerPtr value_ptr(node);
+    return value_ptr->GetValue();
+  }
+
+  std::string get_enum(const std::string& node_name) {
+    auto node = get_read_node(node_name);
+    if (!node) {
+      return "";
+    }
+
+    GenApi::CEnumerationPtr value_ptr(node);
+    GenApi::CEnumEntryPtr entry(value_ptr->GetCurrentEntry());
+    return entry->GetSymbolic().c_str();
+  }
+
+  void execute_command(const std::string& node_name) {
+    auto node = get_write_node(node_name);
+    if (!node) {
       return;
     }
 
-    GenApi::CBooleanPtr value(node);
-    value->SetValue(true);
-
-    std::cout << "PTP enabled" << std::endl;
-
-    std::cout << "Latching PTP" << std::endl;
-    auto latch_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("PtpDataSetLatch");
-    if (!GenApi::IsAvailable(latch_node)) {
-      std::cout << "PTP latch node is not available" << std::endl;
-    }
-
-    GenApi::CCommandPtr command(latch_node);
+    GenApi::CCommandPtr command(node);
     command->Execute();
   }
 
-  std::string get_ptp_status() {
-    if (!params.enable_ptp) {
-      return "Status:N/A";
-    }
+  void image_callback(StApi::IStCallbackParamBase* ist_callback_param_base, void* context) {
+    using namespace StApi;
+    using namespace GenApi;
 
-    auto node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("PtpStatus");
-    if (!GenApi::IsReadable(node)) {
-      std::cout << "PTP status is not readable!!" << std::endl;
-      return "Status:Error";
-    }
+    if (ist_callback_param_base->GetCallbackType() == StCallbackType_GenTLEvent_DataStreamNewBuffer) {
+      IStCallbackParamGenTLEventNewBuffer* new_buffer = dynamic_cast<IStCallbackParamGenTLEventNewBuffer*>(ist_callback_param_base);
 
-    GenApi::CEnumerationPtr value(node);
-    const int valuei = value->GetIntValue();
-    GenApi::CEnumEntryPtr entry(value->GetCurrentEntry());
+      try {
+        IStDataStream* ist_data_stream = new_buffer->GetIStDataStream();
+        CIStStreamBufferPtr ist_stream_buffer = ist_data_stream->RetrieveBuffer(0);
 
-    std::string status = entry->GetSymbolic().c_str();
+        const IStStreamBufferInfo* stream_buffer_info = ist_stream_buffer->GetIStStreamBufferInfo();
 
-    std::stringstream sst;
-    sst << "Status:" << status;
+        if (stream_buffer_info->IsImagePresent()) {
+          IStImage* ist_image = ist_stream_buffer->GetIStImage();
+          const auto pixel_format = ist_image->GetImagePixelFormat();
+          const IStPixelFormatInfo* pixel_format_info = GetIStPixelFormatInfo(pixel_format);
+          const std::uint64_t stamp = stream_buffer_info->GetTimestamp();
 
-    if (status == "Disabled" || status == "Listening") {
-      std::cout << "Latching PTP" << std::endl;
-      auto latch_node = ist_device->GetRemoteIStPort()->GetINodeMap()->GetNode("PtpDataSetLatch");
-      if (!GenApi::IsAvailable(latch_node)) {
-        std::cout << "PTP latch node is not available" << std::endl;
+          if (pixel_format_info->IsMono() || pixel_format_info->IsBayer()) {
+            const size_t width = ist_image->GetImageWidth();
+            const size_t height = ist_image->GetImageHeight();
+            int input_type = CV_8UC1;
+            if (8 < pixel_format_info->GetEachComponentTotalBitCount()) {
+              input_type = CV_16UC1;
+            }
+            input_mat.create(height, width, input_type);
+
+            const size_t buffer_size = input_mat.rows * input_mat.cols * input_mat.elemSize() * input_mat.channels();
+            memcpy(input_mat.ptr(0), ist_image->GetImageBuffer(), buffer_size);
+
+            if (pixel_format_info->IsBayer()) {
+              int convert_code = 0;
+              switch (pixel_format_info->GetPixelColorFilter()) {
+                default:
+                  std::cerr << "error: unknown bayer pattern " << static_cast<int>(pixel_format_info->GetPixelColorFilter()) << std::endl;
+                case (StPixelColorFilter_BayerRG):
+                  convert_code = cv::COLOR_BayerRG2RGB;
+                  break;
+                case (StPixelColorFilter_BayerGR):
+                  convert_code = cv::COLOR_BayerGR2RGB;
+                  break;
+                case (StPixelColorFilter_BayerGB):
+                  convert_code = cv::COLOR_BayerGB2RGB;
+                  break;
+                case (StPixelColorFilter_BayerBG):
+                  convert_code = cv::COLOR_BayerBG2RGB;
+                  break;
+              }
+
+              if (convert_code != 0) {
+                cv::cvtColor(input_mat, bgr_image, convert_code);
+                publish_image(stamp, bgr_image);
+              }
+            }
+          }
+        } else {
+          std::cerr << "image does not exist" << std::endl;
+        }
+
+      } catch (const GenICam::GenericException& e) {
+        std::cerr << "exception:" << e.GetDescription() << std::endl;
       }
-
-      GenApi::CCommandPtr command(latch_node);
-      command->Execute();
     }
 
-    return sst.str();
+    if (params.enable_ptp && (std::chrono::high_resolution_clock::now() - last_ptp_time) > std::chrono::seconds(2)) {
+      const std::string status = get_enum("PtpStatus");
+      execute_command("PtpDataSetLatch");
+      publish_ptp_status(status);
+      last_ptp_time = std::chrono::high_resolution_clock::now();
+    }
   }
 
 protected:
   SentechGigeDriverParams params;
   std::string camera_name;
 
-  StApi::CStApiAutoInit stapi_auto_init;
+  bool initialized;
+  bool stopped;
+
+  StApi::CStApiAutoInit auto_init;
   StApi::CIStSystemPtr ist_system;
   StApi::CIStDevicePtr ist_device;
-
   StApi::CIStDataStreamPtr ist_data_stream;
+
+  cv::Mat input_mat;
+  cv::Mat bgr_image;
+
+  std::chrono::high_resolution_clock::time_point last_ptp_time;
 };

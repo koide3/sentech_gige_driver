@@ -6,9 +6,9 @@
 
 #include <sentech_gige_driver.hpp>
 
-class SentechGigeDriverROS2 : public rclcpp::Node, public SentechGigeDriver {
+class SentechGigeDriverNode : public rclcpp::Node, public SentechGigeDriver {
 public:
-  SentechGigeDriverROS2(rclcpp::NodeOptions& options) : rclcpp::Node("sentech_gige_driver", options) {
+  SentechGigeDriverNode(rclcpp::NodeOptions& options) : rclcpp::Node("sentech_gige_driver", options) {
     frame_id = "camera";
     SentechGigeDriverParams params;
 
@@ -40,52 +40,32 @@ public:
 
     image_pub = image_transport::create_camera_publisher(this, "image");
     ptp_status_pub = this->create_publisher<std_msgs::msg::String>("ptp_status", 10);
-
-    // timer = this->create_wall_timer(std::chrono::milliseconds(100), [this] { timer_callback(); });
-    if (params.enable_ptp) {
-      ptp_status_timer = this->create_wall_timer(std::chrono::seconds(2), [this] { ptp_status_timer_callback(); });
-    }
   }
 
-  ~SentechGigeDriverROS2() {  //
-    stop();
-  }
+  virtual ~SentechGigeDriverNode() override {}
 
-  void spin_once() {
-    const auto stamp_image = get_image();
-    const auto& stamp = stamp_image.first;
-    const auto& image = stamp_image.second;
-
-    if (!image.data) {
-      return;
-    }
-
+  virtual void publish_image(std::uint64_t stamp, const cv::Mat& bgr_image) override {
     std_msgs::msg::Header header;
     header.frame_id = frame_id;
     header.stamp.sec = stamp / 1000000000;
     header.stamp.nanosec = stamp % 1000000000;
 
     auto info_msg = camera_info->getCameraInfo();
-    auto image_msg = cv_bridge::CvImage(header, "rgb8", image).toImageMsg();
+    info_msg.header = header;
+
+    auto image_msg = cv_bridge::CvImage(header, "bgr8", bgr_image).toImageMsg();
 
     image_pub.publish(*image_msg, info_msg);
   }
 
-  void ptp_status_timer_callback() {
-    if (!ptp_status_pub->get_subscription_count()) {
-      return;
-    }
-
-    std_msgs::msg::String status_msg;
-    status_msg.data = get_ptp_status();
-    ptp_status_pub->publish(status_msg);
+  virtual void publish_ptp_status(const std::string& status) override {
+    std_msgs::msg::String msg;
+    msg.data = status;
+    ptp_status_pub->publish(msg);
   }
 
 private:
   std::string frame_id;
-
-  rclcpp::TimerBase::SharedPtr timer;
-  rclcpp::TimerBase::SharedPtr ptp_status_timer;
 
   std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info;
 
@@ -94,15 +74,19 @@ private:
 };
 
 int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::NodeOptions options;
-  auto node = std::make_shared<SentechGigeDriverROS2>(options);
+  try {
+    rclcpp::init(argc, argv);
+    rclcpp::NodeOptions options;
 
-  while (rclcpp::ok()) {
-    node->spin_once();
-    rclcpp::spin_some(node);
+    auto node = std::make_shared<SentechGigeDriverNode>(options);
+
+    rclcpp::spin(node);
+    node->stop();
+
+    rclcpp::shutdown();
+  } catch (const GenICam::GenericException& e) {
+    std::cerr << "exception: " << e.GetDescription() << std::endl;
   }
-  rclcpp::shutdown();
 
   return 0;
 }
