@@ -8,6 +8,7 @@ if($ENV{ROS_VERSION} EQUAL 1)
   # ROS1
   find_package(catkin REQUIRED COMPONENTS
     roscpp
+    std_msgs
     cv_bridge
     image_transport
     camera_info_manager
@@ -31,35 +32,34 @@ find_package(OpenCV REQUIRED)
 message(STATUS "StApi_INCLUDE_DIRS:${StApi_INCLUDE_DIRS}")
 message(STATUS "StApi_LIBRARIES   :${StApi_LIBRARIES}")
 
-# include_directories(
-# #  include
-#   ${StApi_INCLUDE_DIRS}
-#   ${catkin_INCLUDE_DIRS}
-# )
-# add_executable(sentech_gige_driver
-#   src/sentech_gige_driver.cpp
-# )
-# target_link_libraries(sentech_gige_driver
-#   ${StApi_LIBRARIES}
-#   ${OpenCV_LIBRARIES}
-#   ${catkin_LIBRARIES}
-# )
-
-ament_auto_add_executable(sentech_gige_driver
-  src/sentech_gige_driver_ros2.cpp
-)
-target_include_directories(sentech_gige_driver PUBLIC
-  include
-  ${StApi_INCLUDE_DIRS}
-)
-target_link_libraries(sentech_gige_driver
-  ${StApi_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
-
 if($ENV{ROS_VERSION} EQUAL 1)
   # ROS1
+  add_executable(sentech_gige_driver
+    src/sentech_gige_driver_ros1.cpp
+  )
+  target_include_directories(sentech_gige_driver PUBLIC
+    include
+    ${StApi_INCLUDE_DIRS}
+    ${catkin_INCLUDE_DIRS}
+  )
+  target_link_libraries(sentech_gige_driver
+    ${StApi_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+    ${catkin_LIBRARIES}
+  )
 else()
   # ROS2
+  ament_auto_add_executable(sentech_gige_driver
+    src/sentech_gige_driver_ros2.cpp
+  )
+  target_include_directories(sentech_gige_driver PUBLIC
+    include
+    ${StApi_INCLUDE_DIRS}
+  )
+  target_link_libraries(sentech_gige_driver
+    ${StApi_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+  )
+
   ament_auto_package()
 endif()
