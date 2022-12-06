@@ -29,6 +29,8 @@ public:
 
     camera_pub = it.advertiseCamera("image", 10);
     ptp_status_pub = nh.advertise<std_msgs::String>("ptp_status", 10);
+
+    start();
   }
 
   virtual ~SentechGigeDriverNode() override {}

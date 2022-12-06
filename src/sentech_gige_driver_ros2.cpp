@@ -35,11 +35,12 @@ public:
     this->get_parameter("fps", params.fps);
 
     init(params);
-
     camera_info.reset(new camera_info_manager::CameraInfoManager(this, camera_name));
 
     image_pub = image_transport::create_camera_publisher(this, "image", rmw_qos_profile_sensor_data);
     ptp_status_pub = this->create_publisher<std_msgs::msg::String>("ptp_status", 10);
+
+    start();
   }
 
   virtual ~SentechGigeDriverNode() override {}

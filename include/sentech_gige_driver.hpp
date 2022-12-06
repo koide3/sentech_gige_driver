@@ -61,10 +61,6 @@ public:
     ist_data_stream = ist_device->CreateIStDataStream(0);
     RegisterCallback(ist_data_stream, *this, &SentechGigeDriver::image_callback, (void*)nullptr);
 
-    ist_data_stream->StartAcquisition();
-    ist_device->AcquisitionStart();
-    initialized = true;
-
     std::cout << "---" << std::endl;
 
     // Gain
@@ -99,6 +95,13 @@ public:
     }
 
     std::cout << "---" << std::endl;
+  }
+
+  void start() {
+    std::cout << "Starting Acquisition" << std::endl;
+    ist_data_stream->StartAcquisition();
+    ist_device->AcquisitionStart();
+    initialized = true;
   }
 
   void stop() {
