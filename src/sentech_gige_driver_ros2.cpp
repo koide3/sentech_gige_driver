@@ -16,6 +16,7 @@ public:
     this->declare_parameter<int>("camera_id", params.camera_id);
     this->declare_parameter<bool>("enable_ptp", params.enable_ptp);
     this->declare_parameter<bool>("auto_gain", params.auto_gain);
+    this->declare_parameter<int>("luminance_target", params.luminance_target);
     this->declare_parameter<double>("gain", params.gain);
     this->declare_parameter<bool>("auto_exposure", params.auto_exposure);
     this->declare_parameter<double>("exposure", params.exposure);
@@ -27,6 +28,7 @@ public:
     this->get_parameter("camera_id", params.camera_id);
     this->get_parameter("enable_ptp", params.enable_ptp);
     this->get_parameter("auto_gain", params.auto_gain);
+    this->get_parameter("luminance_target", params.luminance_target);
     this->get_parameter("gain", params.gain);
     this->get_parameter("auto_exposure", params.auto_exposure);
     this->get_parameter("exposure", params.exposure);

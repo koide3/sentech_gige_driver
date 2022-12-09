@@ -10,6 +10,7 @@ struct SentechGigeDriverParams {
     enable_ptp = false;
 
     auto_gain = true;
+    luminance_target = 80;
     gain = 22.0;
 
     auto_exposure = true;
@@ -24,6 +25,7 @@ struct SentechGigeDriverParams {
   bool enable_ptp;
 
   bool auto_gain;
+  int luminance_target;
   double gain;
 
   bool auto_exposure;
@@ -70,6 +72,7 @@ public:
         set_param<std::string>("GainSelector", "DigitalAll");
         set_param<std::string>("GainAuto", "Continuous");
       }
+      set_param<int>("AutoLuminanceTarget", params.luminance_target);
     } else {
       set_param<std::string>("GainAuto", "Off");
       set_param<double>("Gain", params.gain);

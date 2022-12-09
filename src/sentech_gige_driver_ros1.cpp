@@ -16,6 +16,7 @@ public:
     nh.getParam("camera_id", params.camera_id);
     nh.getParam("enable_ptp", params.enable_ptp);
     nh.getParam("auto_gain", params.auto_gain);
+    nh.getParam("luminance_target", params.luminance_target);
     nh.getParam("gain", params.gain);
     nh.getParam("auto_exposure", params.auto_exposure);
     nh.getParam("exposure", params.exposure);
