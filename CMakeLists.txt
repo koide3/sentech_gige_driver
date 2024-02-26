@@ -49,7 +49,7 @@ if($ENV{ROS_VERSION} EQUAL 1)
   )
 else()
   # ROS2
-  ament_auto_add_executable(sentech_gige_driver
+  ament_auto_add_library(sentech_gige_driver SHARED
     src/sentech_gige_driver_ros2.cpp
   )
   target_include_directories(sentech_gige_driver PUBLIC
@@ -60,6 +60,12 @@ else()
     ${StApi_LIBRARIES}
     ${OpenCV_LIBRARIES}
   )
+
+  ament_auto_add_library(sentech_gige_driver_node SHARED
+    src/sentech_gige_driver_ros2_node.cpp
+  )
+
+  rclcpp_components_register_nodes(sentech_gige_driver "sentech_gige_driver::SentechGigeDriverNode")
 
   ament_auto_package()
 endif()
