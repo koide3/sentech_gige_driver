@@ -13,6 +13,8 @@ namespace sentech_gige_driver {
 class SentechGigeDriverNode : public rclcpp::Node, public SentechGigeDriver {
 public:
   SentechGigeDriverNode(rclcpp::NodeOptions options) : rclcpp::Node("sentech_gige_driver", options) {
+    std::cout << "sentech_gige_driver" << std::endl;
+
     frame_id = "camera";
     SentechGigeDriverParams params;
 

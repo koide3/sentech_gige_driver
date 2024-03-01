@@ -61,7 +61,7 @@ else()
     ${OpenCV_LIBRARIES}
   )
 
-  ament_auto_add_library(sentech_gige_driver_node SHARED
+  ament_auto_add_executable(sentech_gige_driver_node
     src/sentech_gige_driver_ros2_node.cpp
   )
 
